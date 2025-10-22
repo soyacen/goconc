@@ -2,10 +2,10 @@ package mutexx
 
 import (
 	"fmt"
-	"github.com/go-leo/gox/runtimex"
-	"github.com/petermattis/goid"
 	"sync"
 	"sync/atomic"
+
+	"github.com/petermattis/goid"
 )
 
 // RecursiveMutex 包装一个Mutex,实现可重入
@@ -16,7 +16,7 @@ type RecursiveMutex struct {
 }
 
 func (m *RecursiveMutex) Lock() {
-	gid := runtimex.GoID()
+	gid := goid.Get()
 	// 如果当前持有锁的goroutine就是这次调用的goroutine,说明是重入
 	if atomic.LoadInt64(&m.owner) == gid {
 		m.recursion++
@@ -53,7 +53,7 @@ type TokenRecursiveMutex struct {
 
 // Lock 请求锁，需要传入token
 func (m *TokenRecursiveMutex) Lock(token int64) {
-	if atomic.LoadInt64(&m.token) == token { //如果传入的token和持有锁的token一致，说明是递归调用
+	if atomic.LoadInt64(&m.token) == token { // 如果传入的token和持有锁的token一致，说明是递归调用
 		m.recursion++
 		return
 	}

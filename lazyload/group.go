@@ -1,4 +1,4 @@
-package lazyloadx
+package lazyload
 
 import (
 	"errors"
@@ -6,7 +6,7 @@ import (
 	"sync"
 )
 
-var ErrNilFunction = errors.New("lazyloadx: New function is nil")
+var ErrNilFunction = errors.New("lazyload: New function is nil")
 
 // Group 用于实现缓存和懒加载功能
 type Group[Obj any] struct {

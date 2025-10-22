@@ -1,4 +1,4 @@
-package lazyloadx
+package lazyload
 
 import (
 	"testing"
