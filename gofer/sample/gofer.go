@@ -114,55 +114,55 @@ func (o *options) Correct() *options {
 func New(opts ...Option) *Gofer {
 	options := new(options).Apply(opts...).Correct()
 	return &Gofer{
-		Options: options,
-		CloseC:  make(chan struct{}), // 用于通知关闭的channel
+		options: options,
+		closeC:  make(chan struct{}), // 用于通知关闭的channel
 	}
 }
 
 // Gofer 线程池结构体
 type Gofer struct {
-	Options   *options       // 配置选项
-	M         sync.Mutex     // 互斥锁，保护状态变更
-	WaitGroup sync.WaitGroup // 等待组，等待所有任务完成
-	State     int32          // 当前运行的线程数，-1表示已关闭
-	CloseC    chan struct{}  // 关闭通知channel
+	options *options       // 配置选项
+	m       sync.Mutex     // 互斥锁，保护状态变更
+	wg      sync.WaitGroup // 等待组，等待所有任务完成
+	state   int32          // 当前运行的线程数，-1表示已关闭
+	closeC  chan struct{}  // 关闭通知channel
 }
 
 // Go 提交一个任务到线程池执行
 func (g *Gofer) Go(task func()) error {
 	// 检查任务是否为空
 	if task == nil {
-		return errors.New("gofer: task is nil")
+		return ErrTaskNil
 	}
 
 	// 检查线程池是否已关闭（无锁检查）
-	state := atomic.LoadInt32(&g.State)
+	state := atomic.LoadInt32(&g.state)
 	if state == stateClosed {
 		return ErrPoolClosed
 	}
 
 	// 检查是否超过最大线程数（无锁检查）
-	if int(state) >= g.Options.MaximumPoolSize {
+	if int(state) >= g.options.MaximumPoolSize {
 		return ErrPoolFull
 	}
 
 	// 加锁进行精确检查和状态变更
-	g.M.Lock()
-	defer g.M.Unlock()
-	state = atomic.LoadInt32(&g.State)
+	g.m.Lock()
+	defer g.m.Unlock()
+	state = atomic.LoadInt32(&g.state)
 	if state == stateClosed {
 		return ErrPoolClosed
 	}
 
 	// 再次检查是否超过最大线程数
-	if int(state) >= g.Options.MaximumPoolSize {
+	if int(state) >= g.options.MaximumPoolSize {
 		return ErrPoolFull
 	}
 
 	// 当提交一个新任务时，线程池会判断当前运行的线程数是否小于corePoolSize，如果小于，则创建新线程执行任务
-	if int(state) < g.Options.CorePoolSize {
+	if int(state) < g.options.CorePoolSize {
 		newWorker := &worker{
-			Options:   g.Options,
+			Options:   g.options,
 			Gofer:     g,
 			Core:      true, // 标记为核心线程
 			FirstTask: task, // 第一个要执行的任务
@@ -173,13 +173,13 @@ func (g *Gofer) Go(task func()) error {
 
 	// 尝试将任务放入工作队列
 	select {
-	case g.Options.WorkQueue <- task:
+	case g.options.WorkQueue <- task:
 		// 如果运行的线程数等于或大于corePoolSize，则将任务加入workQueue等待执行
 		return nil
 	default:
 		// 如果workQueue已满，且当前运行的线程数小于maximumPoolSize，则创建新线程执行任务
 		newWorker := &worker{
-			Options:   g.Options,
+			Options:   g.options,
 			Gofer:     g,
 			Core:      false, // 标记为非核心线程
 			FirstTask: task,  // 第一个要执行的任务
@@ -192,26 +192,26 @@ func (g *Gofer) Go(task func()) error {
 // Close 关闭线程池，等待所有任务完成
 func (g *Gofer) Close(ctx context.Context) error {
 	// 检查线程池是否已关闭（无锁检查）
-	if atomic.LoadInt32(&g.State) == stateClosed {
+	if atomic.LoadInt32(&g.state) == stateClosed {
 		return ErrPoolClosed
 	}
 
 	// 加锁进行精确检查和状态变更
-	g.M.Lock()
-	defer g.M.Unlock()
-	if atomic.LoadInt32(&g.State) == stateClosed {
+	g.m.Lock()
+	defer g.m.Unlock()
+	if atomic.LoadInt32(&g.state) == stateClosed {
 		return ErrPoolClosed
 	}
 
 	// 设置关闭状态并关闭通知channel
-	atomic.StoreInt32(&g.State, stateClosed)
-	close(g.CloseC)
+	atomic.StoreInt32(&g.state, stateClosed)
+	close(g.closeC)
 
 	// 创建等待完成的channel
 	waitC := make(chan struct{})
 	go func() {
-		g.WaitGroup.Wait() // 等待所有任务完成
-		close(waitC)       // 关闭等待channel
+		g.wg.Wait()  // 等待所有任务完成
+		close(waitC) // 关闭等待channel
 	}()
 
 	// 等待关闭完成或上下文取消
@@ -234,14 +234,14 @@ type worker struct {
 // work 启动工作线程
 func (w *worker) work() {
 	// 增加等待组计数和线程池状态计数
-	w.Gofer.WaitGroup.Add(1)
-	atomic.AddInt32(&w.Gofer.State, 1)
+	w.Gofer.wg.Add(1)
+	atomic.AddInt32(&w.Gofer.state, 1)
 
 	// 启动goroutine执行任务
 	go func() {
 		// 任务完成后减少等待组计数和线程池状态计数
-		defer w.Gofer.WaitGroup.Done()
-		defer atomic.AddInt32(&w.Gofer.State, -1)
+		defer w.Gofer.wg.Done()
+		defer atomic.AddInt32(&w.Gofer.state, -1)
 
 		// 捕获任务执行过程中的panic
 		defer func() {
@@ -267,7 +267,7 @@ func (w *worker) work() {
 						return
 					}
 					task()
-				case <-w.Gofer.CloseC:
+				case <-w.Gofer.closeC:
 					return
 				}
 			}
@@ -283,7 +283,7 @@ func (w *worker) work() {
 						return
 					}
 					task()
-				case <-w.Gofer.CloseC:
+				case <-w.Gofer.closeC:
 					return
 				case <-time.After(w.Options.KeepAliveTime):
 					// 非核心线程超时后退出
