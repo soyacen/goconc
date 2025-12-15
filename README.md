@@ -7,26 +7,21 @@ goconc is a comprehensive Go concurrency utilities library that provides enhance
 
 ## Features
 
-### 1. Barrier
-Implements a reusable barrier similar to Java's CyclicBarrier, allowing multiple goroutines to synchronize at a common point.
+### 1. Once Execution (oncex)
+Ensures functions are executed only once per key with keyed execution.
 
 ```go
-barrier := barrier.NewGroup(3, func() {
-    fmt.Println("All participants have arrived")
+group := &oncex.Group{}
+
+// Execute function only once per key
+group.Do("key1", func() {
+    fmt.Println("This will only execute once for key1")
 })
 
-var wg sync.WaitGroup
-for i := 0; i < 3; i++ {
-    wg.Add(1)
-    go func(id int) {
-        defer wg.Done()
-        err := barrier.Wait(context.Background())
-        if err != nil {
-            log.Fatal(err)
-        }
-    }(i)
-}
-wg.Wait()
+// Subsequent calls with the same key won't execute
+group.Do("key1", func() {
+    fmt.Println("This won't be executed")
+})
 ```
 
 ### 2. Waiter
@@ -193,24 +188,7 @@ buf.WriteString("Hello, World!")
 pool.Put(buf) // Return to pool after use
 ```
 
-### 11. Once Execution (oncex)
-Ensures functions are executed only once per key with keyed execution.
-
-```go
-group := &oncex.Group{}
-
-// Execute function only once per key
-group.Do("key1", func() {
-    fmt.Println("This will only execute once for key1")
-})
-
-// Subsequent calls with the same key won't execute
-group.Do("key1", func() {
-    fmt.Println("This won't be executed")
-})
-```
-
-### 12. Goroutine Pool (gofer)
+### 11. Goroutine Pool (gofer)
 Provides a unified interface for various goroutine pool implementations.
 
 ```go
