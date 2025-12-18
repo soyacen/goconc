@@ -75,16 +75,16 @@ func (o *options) Apply(opts ...Option) *options {
 
 func (o *options) Correct() *options {
 	if o.CorePoolSize <= 0 {
-		o.CorePoolSize = runtime.NumCPU()
+		o.CorePoolSize = 256
 	}
 	if o.MaximumPoolSize < o.CorePoolSize {
-		o.MaximumPoolSize = o.CorePoolSize
+		o.MaximumPoolSize = runtime.GOMAXPROCS(0) * o.CorePoolSize
 	}
 	if o.KeepAliveTime <= 0 {
 		o.KeepAliveTime = 5 * time.Minute
 	}
-	if o.WorkQueueSize <= 0 {
-		o.WorkQueueSize = 1000 * o.MaximumPoolSize
+	if o.WorkQueueSize < 0 {
+		o.WorkQueueSize = runtime.NumCPU() * o.MaximumPoolSize
 	}
 	if o.Recover == nil {
 		o.Recover = func(p any, stack []byte) {
