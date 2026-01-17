@@ -2,8 +2,9 @@ package lazyload
 
 import (
 	"errors"
-	"golang.org/x/sync/singleflight"
 	"sync"
+
+	"golang.org/x/sync/singleflight"
 )
 
 var ErrNilFunction = errors.New("lazyload: New function is nil")
@@ -16,7 +17,7 @@ type Group[Obj any] struct {
 	// g 用于并发控制，确保多个 goroutine 同时请求同一个键时，只有一个 goroutine 执行创建逻辑。
 	g singleflight.Group
 
-	// New 一个函数指针，用于创建新的值。
+	// New 一个函数指针，用于创建新的值。在创建时设置，之后不再修改
 	New func(key string) (Obj, error)
 }
 
